@@ -32,7 +32,7 @@ Gem::Specification.new do |spec|
   spec.executables = ["repo-tender"]
   spec.require_paths = ["lib"]
 
-  spec.required_ruby_version = ">= 4.0.5"
+  spec.required_ruby_version = ">= 3.3"
 
   spec.add_dependency "async", "~> 2.39"
   spec.add_dependency "dry-cli", "~> 1.4"
