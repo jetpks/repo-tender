@@ -3,11 +3,11 @@
 require "pastel"
 require "fileutils"
 require "dry/monads"
-require "repo_tender/cli"
 require "repo_tender/ui/mode"
 require "repo_tender/cli/options"
 require "repo_tender/launchd/agent"
 require "repo_tender/launchd/plist"
+require "repo_tender/migration"
 
 module RepoTender
   module CLI
@@ -57,7 +57,7 @@ module RepoTender
         #      toolchain-resolved ruby; pinned via mise.toml).
         #   * `bin_path` — `RbConfig.ruby` + the script path
         #      (we use `__dir__` of this file's caller; for the
-        #      gem install, this is `<gem>/bin/repo-tender`).
+        #      gem install, this is `<gem>/exe/repo-tender`).
         #
         # In tests, we inject these via the `Resolve` object
         # (see below) — never call out to the shell.
@@ -112,6 +112,15 @@ module RepoTender
 
           label = Launchd::Agent::DEFAULT_LABEL
           pp = plist_path(paths, label)
+
+          # Relabel: if old-identity plist exists, bootout (benign-failure-tolerant)
+          # and remove it before bootstrapping the new-label plist.
+          old_pp = plist_path(paths, Migration::OLD_LABEL)
+          if File.exist?(old_pp)
+            old_agent = make_agent(label: Migration::OLD_LABEL)
+            old_agent.uninstall
+            File.delete(old_pp) if File.exist?(old_pp)
+          end
 
           resolve = Resolve.detect(repo_root: Dir.pwd)
           xml = build_plist(resolve: resolve, config: config, paths: paths, label: label)
@@ -264,6 +273,12 @@ module RepoTender
           )
           pastel = Pastel.new(enabled: mode.color)
 
+          paths = CLI.make_paths
+          old_pp = plist_path(paths, Migration::OLD_LABEL)
+          if File.exist?(old_pp)
+            err.puts pastel.yellow("warning: stale agent #{Migration::OLD_LABEL} detected; run `repo-tender daemon install` to upgrade")
+          end
+
           label = Launchd::Agent::DEFAULT_LABEL
           agent = make_agent
           result = agent.status
@@ -283,11 +298,11 @@ module RepoTender
   end
 end
 
-# Detect the runtime paths the plist needs. The repo-tender
-# install path matters because the plist stores an absolute
-# `bin_path` — that is the script launchd invokes. We resolve
-# `bin_path` from the on-disk gem layout if we can, else fall
-# back to the directory the daemon command was run from.
+# Detect the runtime paths the plist needs. The repo-tender install path
+# matters because the plist stores an absolute `bin_path` — that
+# is the script launchd invokes. We resolve `bin_path` from the
+# on-disk gem layout if we can, else fall back to the directory
+# the daemon command was run from.
 class RepoTender::CLI::Daemon::Helpers::Resolve
   # @param repo_root [String]  absolute path of the working directory (where mise.toml is expected)
   # @return [Resolve]
@@ -323,10 +338,10 @@ class RepoTender::CLI::Daemon::Helpers::Resolve
   def self.detect_bin_path(repo_root)
     path = ENV["REPO_TENDER_BIN_PATH"]
     return path if path && !path.empty?
-    # Prefer the on-disk dev bin at `<repo_root>/bin/repo-tender`
+    # Prefer the on-disk dev bin at `<repo_root>/exe/repo-tender`
     # — it's what the human runs during testing, and the gem is
     # typically not `gem install`ed in a source checkout.
-    dev = File.join(repo_root, "bin", "repo-tender")
+    dev = File.join(repo_root, "exe", "repo-tender")
     return dev if File.exist?(dev)
     # Next, an installed binary on PATH.
     require "open3"

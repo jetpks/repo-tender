@@ -17,31 +17,36 @@ Gem::Specification.new do |spec|
   spec.license = "MIT"
   spec.metadata = {
     "bug_tracker_uri" => "https://github.com/jetpks/repo-tender/issues",
+    "changelog_uri" => "#{spec.homepage}/blob/main/CHANGELOG.md",
     "homepage_uri" => "https://github.com/jetpks/repo-tender",
     "source_code_uri" => "https://github.com/jetpks/repo-tender"
   }
 
   spec.files = Dir[
     "lib/**/*.rb",
-    "bin/**/*",
+    "exe/*",
     "README.md",
+    "CHANGELOG.md",
     "LICENSE.txt",
     "repo-tender.gemspec"
   ]
-  spec.bindir = "bin"
-  spec.executables = ["repo-tender"]
+  spec.bindir = "exe"
+  spec.executables = ["repo-tender", "src"]
   spec.require_paths = ["lib"]
 
-  spec.required_ruby_version = ">= 3.3"
+  spec.required_ruby_version = ">= 4.0.5"
 
   spec.add_dependency "async", "~> 2.39"
   spec.add_dependency "dry-cli", "~> 1.4"
   spec.add_dependency "dry-monads", "~> 1.10"
-  spec.add_dependency "dry-schema", "~> 1.16"
   spec.add_dependency "dry-struct", "~> 1.8"
   spec.add_dependency "dry-types", "~> 1.9"
   spec.add_dependency "dry-validation", "~> 1.11"
   spec.add_dependency "xdg", "~> 10.2"
   spec.add_dependency "pastel", "~> 0.8"
   spec.add_dependency "tty-cursor", "~> 0.7"
+
+  spec.add_development_dependency "minitest", "~> 6.0"
+  spec.add_development_dependency "mutant-minitest", "~> 0.16"
+  spec.add_development_dependency "rake", "~> 13.0"
 end

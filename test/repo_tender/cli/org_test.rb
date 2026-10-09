@@ -6,15 +6,15 @@ class CLIOrgTest < Minitest::Test
   include TestHelpers
   include CLITestHelpers
 
-  RepoTenderCLI = RepoTender::CLI
+  PristineCLI = RepoTender::CLI
 
   # ---- G2: org CRUD persists to validated config.yaml ----
 
   def test_org_add_persists_validated_entry
     with_cli_env do |env, _home|
-      out, _err = invoke_command(RepoTenderCLI::Org::Add, name: "github.com/socketry")
+      out, _err = invoke_command(PristineCLI::Org::Add, name: "github.com/socketry")
       assert_equal "added: github.com/socketry (include_archived=false, include_forks=false)\n", out.string
-      assert_equal 0, RepoTenderCLI.last_outcome.exit_code
+      assert_equal 0, PristineCLI.last_outcome.exit_code
 
       paths = RepoTender::Paths.new(environment: env)
       cfg = RepoTender::Config::Store.load(paths.config_file).success
@@ -28,8 +28,8 @@ class CLIOrgTest < Minitest::Test
 
   def test_org_add_with_bare_name_defaults_host_to_github_com
     with_cli_env do |env, _home|
-      out, _err = invoke_command(RepoTenderCLI::Org::Add, name: "example-org")
-      assert_equal 0, RepoTenderCLI.last_outcome.exit_code
+      out, _err = invoke_command(PristineCLI::Org::Add, name: "example-org")
+      assert_equal 0, PristineCLI.last_outcome.exit_code
       assert_includes out.string, "added: github.com/example-org"
 
       paths = RepoTender::Paths.new(environment: env)
@@ -41,11 +41,11 @@ class CLIOrgTest < Minitest::Test
 
   def test_org_add_include_archived_and_include_forks_round_trip
     with_cli_env do |env, _home|
-      invoke_command(RepoTenderCLI::Org::Add,
+      invoke_command(PristineCLI::Org::Add,
         name: "example-org",
         include_archived: true,
         include_forks: true)
-      assert_equal 0, RepoTenderCLI.last_outcome.exit_code
+      assert_equal 0, PristineCLI.last_outcome.exit_code
 
       paths = RepoTender::Paths.new(environment: env)
       cfg = RepoTender::Config::Store.load(paths.config_file).success
@@ -66,10 +66,10 @@ class CLIOrgTest < Minitest::Test
           ]
         ))
 
-      out, _err = invoke_command(RepoTenderCLI::Org::List)
+      out, _err = invoke_command(PristineCLI::Org::List)
       assert_includes out.string, "github.com/socketry (include_archived=false, include_forks=false)"
       assert_includes out.string, "github.com/example-org (include_archived=true, include_forks=false)"
-      assert_equal 0, RepoTenderCLI.last_outcome.exit_code
+      assert_equal 0, PristineCLI.last_outcome.exit_code
     end
   end
 
@@ -82,9 +82,9 @@ class CLIOrgTest < Minitest::Test
           orgs: [RepoTender::Config::OrgRef.new(host: "github.com", name: "socketry")])
       end
 
-      out, _err = invoke_command(RepoTenderCLI::Org::Remove, name: "github.com/socketry")
+      out, _err = invoke_command(PristineCLI::Org::Remove, name: "github.com/socketry")
       assert_equal "removed: github.com/socketry\n", out.string
-      assert_equal 0, RepoTenderCLI.last_outcome.exit_code
+      assert_equal 0, PristineCLI.last_outcome.exit_code
 
       cfg = RepoTender::Config::Store.load(paths.config_file).success
       assert_empty cfg.orgs
@@ -93,10 +93,10 @@ class CLIOrgTest < Minitest::Test
 
   def test_org_add_idempotent_does_not_duplicate
     with_cli_env do |env, _home|
-      invoke_command(RepoTenderCLI::Org::Add, name: "github.com/socketry")
-      out, _err = invoke_command(RepoTenderCLI::Org::Add, name: "github.com/socketry")
+      invoke_command(PristineCLI::Org::Add, name: "github.com/socketry")
+      out, _err = invoke_command(PristineCLI::Org::Add, name: "github.com/socketry")
       assert_includes out.string, "already tracked: github.com/socketry"
-      assert_equal 0, RepoTenderCLI.last_outcome.exit_code
+      assert_equal 0, PristineCLI.last_outcome.exit_code
 
       paths = RepoTender::Paths.new(environment: env)
       cfg = RepoTender::Config::Store.load(paths.config_file).success
@@ -108,10 +108,10 @@ class CLIOrgTest < Minitest::Test
 
   def test_org_add_ignored_repos_persists_to_config
     with_cli_env do |env, _home|
-      invoke_command(RepoTenderCLI::Org::Add,
+      invoke_command(PristineCLI::Org::Add,
         name: "bigco",
         ignored_repos: ["monorepo", "huge"])
-      assert_equal 0, RepoTenderCLI.last_outcome.exit_code
+      assert_equal 0, PristineCLI.last_outcome.exit_code
 
       paths = RepoTender::Paths.new(environment: env)
       cfg = RepoTender::Config::Store.load(paths.config_file).success
@@ -121,7 +121,7 @@ class CLIOrgTest < Minitest::Test
 
   def test_org_add_ignored_repos_shown_in_output
     with_cli_env do |_env, _home|
-      out, _err = invoke_command(RepoTenderCLI::Org::Add,
+      out, _err = invoke_command(PristineCLI::Org::Add,
         name: "bigco",
         ignored_repos: ["monorepo", "huge"])
       assert_includes out.string, 'ignored_repos=["monorepo", "huge"]'
@@ -139,7 +139,7 @@ class CLIOrgTest < Minitest::Test
               ignored_repos: ["monorepo", "huge"])
           ]
         ))
-      out, _err = invoke_command(RepoTenderCLI::Org::List)
+      out, _err = invoke_command(PristineCLI::Org::List)
       assert_includes out.string, 'ignored_repos=["monorepo", "huge"]'
     end
   end
@@ -152,7 +152,7 @@ class CLIOrgTest < Minitest::Test
         RepoTender::Config::Store.load(paths.config_file).success.new(
           orgs: [RepoTender::Config::OrgRef.new(host: "github.com", name: "plain")]
         ))
-      out, _err = invoke_command(RepoTenderCLI::Org::List)
+      out, _err = invoke_command(PristineCLI::Org::List)
       refute_includes out.string, "ignored_repos"
     end
   end
@@ -198,8 +198,8 @@ class CLIOrgTest < Minitest::Test
       mtime_before = File.mtime(paths.config_file)
       bytes_before = File.read(paths.config_file)
 
-      out, err = invoke_command(RepoTenderCLI::Org::Add, name: "too/many/parts")
-      assert_equal 1, RepoTenderCLI.last_outcome.exit_code
+      out, err = invoke_command(PristineCLI::Org::Add, name: "too/many/parts")
+      assert_equal 1, PristineCLI.last_outcome.exit_code
       assert_includes err.string, "invalid org reference"
       assert_includes err.string, "\"too/many/parts\""
       assert_equal "", out.string
@@ -223,7 +223,7 @@ class CLIOrgTest < Minitest::Test
   def test_org_add_has_color_in_pretty_mode
     with_cli_env do |_env, _home|
       tty_out = Class.new(StringIO) { def tty? = true }.new
-      cmd = RepoTenderCLI::Org::Add.new
+      cmd = PristineCLI::Org::Add.new
       cmd.instance_variable_set(:@out, tty_out)
       cmd.instance_variable_set(:@err, StringIO.new)
       cmd.call(name: "github.com/socketry", plain: nil, json: nil, no_color: nil, quiet: nil)
@@ -234,7 +234,7 @@ class CLIOrgTest < Minitest::Test
   def test_org_add_no_color_with_no_color_flag
     with_cli_env do |_env, _home|
       tty_out = Class.new(StringIO) { def tty? = true }.new
-      cmd = RepoTenderCLI::Org::Add.new
+      cmd = PristineCLI::Org::Add.new
       cmd.instance_variable_set(:@out, tty_out)
       cmd.instance_variable_set(:@err, StringIO.new)
       cmd.call(name: "github.com/socketry", plain: nil, json: nil, no_color: true, quiet: nil)
@@ -251,7 +251,7 @@ class CLIOrgTest < Minitest::Test
           orgs: [RepoTender::Config::OrgRef.new(host: "github.com", name: "socketry")]
         ))
       tty_out = Class.new(StringIO) { def tty? = true }.new
-      cmd = RepoTenderCLI::Org::List.new
+      cmd = PristineCLI::Org::List.new
       cmd.instance_variable_set(:@out, tty_out)
       cmd.instance_variable_set(:@err, StringIO.new)
       cmd.call(plain: nil, json: nil, no_color: nil, quiet: nil)
@@ -267,7 +267,7 @@ class CLIOrgTest < Minitest::Test
         RepoTender::Config::Store.load(paths.config_file).success.new(
           orgs: [RepoTender::Config::OrgRef.new(host: "github.com", name: "socketry")]
         ))
-      out, _err = invoke_command(RepoTenderCLI::Org::List)
+      out, _err = invoke_command(PristineCLI::Org::List)
       refute_match(/\e\[[0-9;]*m/, out.string)
     end
   end

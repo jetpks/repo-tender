@@ -1,0 +1,13 @@
+#!/usr/bin/env ruby
+# frozen_string_literal: true
+
+source_gemfile = File.expand_path("../Gemfile", __dir__)
+if File.exist?(source_gemfile)
+  ENV["BUNDLE_GEMFILE"] ||= source_gemfile
+  require "bundler/setup"
+  $LOAD_PATH.unshift(File.expand_path("../lib", __dir__))
+end
+
+require "repo_tender"
+
+RepoTender::CLI.run(ARGV, $stdout, $stderr)

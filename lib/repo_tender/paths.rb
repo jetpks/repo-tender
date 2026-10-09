@@ -9,7 +9,7 @@ module RepoTender
   # otherwise falls back to the XDG defaults (~/.config, ~/.local/state).
   #
   # `base_dir` is the on-disk home for the evergreen clones
-  # ($BASE/:host/:owner/:repo). It defaults to ~/src/evergreen/ and is
+  # ($BASE/:host/:owner/:repo). It defaults to ~/src/evergreen and is
   # resolved from the config at call time (passed in as an argument here
   # so this module owns nothing about config storage).
   class Paths
@@ -47,8 +47,8 @@ module RepoTender
       File.join(home, "Library", "LaunchAgents")
     end
 
-    # Default `base_dir` is ~/src/evergreen (per PRD §3.1). Callers may
-    # override by passing one to the constructor (e.g. from loaded config).
+    # Default `base_dir` is ~/src/evergreen. Callers may override by passing
+    # one to the constructor (e.g. from loaded config).
     def base_dir
       @base_dir || DEFAULT_BASE_DIR
     end

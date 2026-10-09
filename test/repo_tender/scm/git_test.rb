@@ -13,8 +13,7 @@ class SCMGitTest < Minitest::Test
   # refusing on divergence — all proven against real on-disk git.
 
   def test_default_branch_resolves_to_trunk_not_assuming_main
-    with_trunk_repo do |_bare, clone|
-      seed_initial_commit(clone)
+    with_seeded_trunk_repo do |_bare, clone|
       git = Git.new
       result = git.default_branch(clone)
       assert result.success?, "default_branch failed: #{result.failure.inspect}"
@@ -23,8 +22,7 @@ class SCMGitTest < Minitest::Test
   end
 
   def test_current_branch_returns_trunk
-    with_trunk_repo do |_bare, clone|
-      seed_initial_commit(clone)
+    with_seeded_trunk_repo do |_bare, clone|
       git = Git.new
       result = git.current_branch(clone)
       assert result.success?
@@ -33,8 +31,7 @@ class SCMGitTest < Minitest::Test
   end
 
   def test_status_parses_clean
-    with_trunk_repo do |_bare, clone|
-      seed_initial_commit(clone)
+    with_seeded_trunk_repo do |_bare, clone|
       git = Git.new
       result = git.status(clone)
       assert result.success?
@@ -43,8 +40,7 @@ class SCMGitTest < Minitest::Test
   end
 
   def test_status_parses_modified_as_dirty
-    with_trunk_repo do |_bare, clone|
-      seed_initial_commit(clone)
+    with_seeded_trunk_repo do |_bare, clone|
       git = Git.new
       File.write(File.join(clone, "README.md"), "modified\n")
       result = git.status(clone)
@@ -55,8 +51,7 @@ class SCMGitTest < Minitest::Test
   end
 
   def test_status_parses_untracked_as_dirty
-    with_trunk_repo do |_bare, clone|
-      seed_initial_commit(clone)
+    with_seeded_trunk_repo do |_bare, clone|
       git = Git.new
       File.write(File.join(clone, "new.txt"), "x")
       result = git.status(clone)
@@ -67,8 +62,7 @@ class SCMGitTest < Minitest::Test
   end
 
   def test_status_parses_staged_as_dirty
-    with_trunk_repo do |_bare, clone|
-      seed_initial_commit(clone)
+    with_seeded_trunk_repo do |_bare, clone|
       git = Git.new
       File.write(File.join(clone, "new.txt"), "x")
       Shell.run("git", "add", "new.txt", chdir: clone)
@@ -80,8 +74,7 @@ class SCMGitTest < Minitest::Test
   end
 
   def test_last_fetch_at_nil_before_any_fetch
-    with_trunk_repo do |_bare, clone|
-      seed_initial_commit(clone)
+    with_seeded_trunk_repo do |_bare, clone|
       git = Git.new
       result = git.last_fetch_at(clone)
       assert result.success?
@@ -91,8 +84,7 @@ class SCMGitTest < Minitest::Test
   end
 
   def test_last_fetch_at_returns_time_after_fetch
-    with_trunk_repo do |_bare, clone|
-      seed_initial_commit(clone)
+    with_seeded_trunk_repo do |_bare, clone|
       git = Git.new
       git.fetch(clone)
       result = git.last_fetch_at(clone)
@@ -102,8 +94,7 @@ class SCMGitTest < Minitest::Test
   end
 
   def test_fetch_succeeds_on_real_repo
-    with_trunk_repo do |_bare, clone|
-      seed_initial_commit(clone)
+    with_seeded_trunk_repo do |_bare, clone|
       git = Git.new
       result = git.fetch(clone)
       assert result.success?, "fetch failed: #{result.failure.inspect}"
@@ -111,8 +102,7 @@ class SCMGitTest < Minitest::Test
   end
 
   def test_clone_creates_new_working_copy
-    with_trunk_repo do |bare, clone|
-      seed_initial_commit(clone)
+    with_seeded_trunk_repo do |bare, clone|
       git = Git.new
       dest = File.join(File.dirname(clone), "cloned")
       result = git.clone(bare, dest)
@@ -124,19 +114,16 @@ class SCMGitTest < Minitest::Test
   # The big one for G5: fast_forward refuses on divergence with no
   # data loss. Working tree + local commits stay intact.
   def test_fast_forward_refuses_on_divergence_with_no_data_loss
-    with_trunk_repo do |bare, clone|
-      seed_initial_commit(clone)
-
+    with_seeded_trunk_repo do |bare, clone|
       # Set up a second clone to push a divergent commit.
       clone2 = File.join(File.dirname(clone), "clone2")
       system("git", "-c", "init.defaultBranch=trunk", "init", "-q", clone2, exception: true, out: File::NULL)
       Shell.run("git", "remote", "add", "origin", bare, chdir: clone2)
-      Shell.run("git", "config", "user.email", "t@t.com", chdir: clone2)
-      Shell.run("git", "config", "user.name", "T", chdir: clone2)
       Shell.run("git", "pull", "-q", "origin", "trunk", chdir: clone2)
       File.write(File.join(clone2, "remote.md"), "remote\n")
       Shell.run("git", "add", ".", chdir: clone2)
-      Shell.run("git", "commit", "-qm", "remote commit", chdir: clone2)
+      Shell.run("git", "-c", "user.email=t@t.com", "-c", "user.name=T",
+        "commit", "-qm", "remote commit", chdir: clone2)
       Shell.run("git", "push", "-q", "origin", "trunk", chdir: clone2)
 
       # Now make a local commit on the original clone (un-pushed).
@@ -162,21 +149,18 @@ class SCMGitTest < Minitest::Test
   end
 
   def test_fast_forward_succeeds_on_clean_behind
-    with_trunk_repo do |bare, clone|
-      seed_initial_commit(clone)
-
+    with_seeded_trunk_repo do |bare, clone|
       # Push a new commit from a second clone, then rewind the first
       # clone's ref to the parent — clean tree, behind on the default
       # branch.
       clone2 = File.join(File.dirname(clone), "clone2")
       system("git", "-c", "init.defaultBranch=trunk", "init", "-q", clone2, exception: true, out: File::NULL)
       Shell.run("git", "remote", "add", "origin", bare, chdir: clone2)
-      Shell.run("git", "config", "user.email", "t@t.com", chdir: clone2)
-      Shell.run("git", "config", "user.name", "T", chdir: clone2)
       Shell.run("git", "pull", "-q", "origin", "trunk", chdir: clone2)
       File.write(File.join(clone2, "remote.md"), "remote\n")
       Shell.run("git", "add", ".", chdir: clone2)
-      Shell.run("git", "commit", "-qm", "remote commit", chdir: clone2)
+      Shell.run("git", "-c", "user.email=t@t.com", "-c", "user.name=T",
+        "commit", "-qm", "remote commit", chdir: clone2)
       Shell.run("git", "push", "-q", "origin", "trunk", chdir: clone2)
 
       # Rewind clone's branch to parent of new commit, no working-tree
@@ -202,8 +186,7 @@ class SCMGitTest < Minitest::Test
   # ---- G4 (interactive-status): fast_forward returns Integer commit count ----
 
   def test_g4_fast_forward_returns_zero_when_up_to_date
-    with_trunk_repo do |_bare, clone|
-      seed_initial_commit(clone)
+    with_seeded_trunk_repo do |_bare, clone|
       # Clone is already up to date with remote (no commits added elsewhere)
       git = Git.new
       result = git.fast_forward(clone, "trunk")
@@ -213,20 +196,17 @@ class SCMGitTest < Minitest::Test
   end
 
   def test_g4_fast_forward_returns_commit_count_when_behind
-    with_trunk_repo do |bare, clone|
-      seed_initial_commit(clone)
-
+    with_seeded_trunk_repo do |bare, clone|
       # Push 2 extra commits from a second clone
       clone2 = File.join(File.dirname(clone), "clone2")
       system("git", "-c", "init.defaultBranch=trunk", "init", "-q", clone2, exception: true, out: File::NULL)
       Shell.run("git", "remote", "add", "origin", bare, chdir: clone2)
-      Shell.run("git", "config", "user.email", "t@t.com", chdir: clone2)
-      Shell.run("git", "config", "user.name", "T", chdir: clone2)
       Shell.run("git", "pull", "-q", "origin", "trunk", chdir: clone2)
       2.times do |i|
         File.write(File.join(clone2, "extra#{i}.md"), "extra#{i}\n")
         Shell.run("git", "add", ".", chdir: clone2)
-        Shell.run("git", "commit", "-qm", "extra commit #{i}", chdir: clone2)
+        Shell.run("git", "-c", "user.email=t@t.com", "-c", "user.name=T",
+          "commit", "-qm", "extra commit #{i}", chdir: clone2)
       end
       Shell.run("git", "push", "-q", "origin", "trunk", chdir: clone2)
 
@@ -245,18 +225,15 @@ class SCMGitTest < Minitest::Test
   end
 
   def test_g4_fast_forward_fails_on_divergence_still
-    with_trunk_repo do |bare, clone|
-      seed_initial_commit(clone)
-
+    with_seeded_trunk_repo do |bare, clone|
       clone2 = File.join(File.dirname(clone), "clone2")
       system("git", "-c", "init.defaultBranch=trunk", "init", "-q", clone2, exception: true, out: File::NULL)
       Shell.run("git", "remote", "add", "origin", bare, chdir: clone2)
-      Shell.run("git", "config", "user.email", "t@t.com", chdir: clone2)
-      Shell.run("git", "config", "user.name", "T", chdir: clone2)
       Shell.run("git", "pull", "-q", "origin", "trunk", chdir: clone2)
       File.write(File.join(clone2, "remote.md"), "remote\n")
       Shell.run("git", "add", ".", chdir: clone2)
-      Shell.run("git", "commit", "-qm", "remote commit", chdir: clone2)
+      Shell.run("git", "-c", "user.email=t@t.com", "-c", "user.name=T",
+        "commit", "-qm", "remote commit", chdir: clone2)
       Shell.run("git", "push", "-q", "origin", "trunk", chdir: clone2)
 
       File.write(File.join(clone, "local.md"), "local\n")
@@ -285,8 +262,7 @@ class SCMGitTest < Minitest::Test
   end
 
   def test_status_unborn_false_on_committed_repo
-    with_trunk_repo do |_bare, clone|
-      seed_initial_commit(clone)
+    with_seeded_trunk_repo do |_bare, clone|
       git = Git.new
       result = git.status(clone)
       assert result.success?

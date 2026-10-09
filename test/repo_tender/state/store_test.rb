@@ -156,11 +156,13 @@ class StateStoreTest < Minitest::Test
       # Patch File.rename on its singleton class to raise before the atomic
       # swap completes — simulates a crash between write(tmp) and rename.
       saved_rename = File.method(:rename)
+      File.singleton_class.send(:remove_method, :rename)
       File.define_singleton_method(:rename) { |*| raise Errno::ENOSPC, "injected failure" }
       begin
         assert_raises(Errno::ENOSPC) { Store.write(path, state) }
       ensure
-        File.define_singleton_method(:rename) { |*args| saved_rename.call(*args) }
+        File.singleton_class.send(:remove_method, :rename)
+        File.define_singleton_method(:rename, saved_rename)
       end
 
       # Original file byte-identical — never truncated.
@@ -219,11 +221,13 @@ class StateStoreTest < Minitest::Test
       )
 
       saved_rename = File.method(:rename)
+      File.singleton_class.send(:remove_method, :rename)
       File.define_singleton_method(:rename) { |*| raise Interrupt }
       begin
         assert_raises(Interrupt) { Store.write(path, state) }
       ensure
-        File.define_singleton_method(:rename) { |*args| saved_rename.call(*args) }
+        File.singleton_class.send(:remove_method, :rename)
+        File.define_singleton_method(:rename, saved_rename)
       end
 
       # (a) Original file byte-unchanged — CF7 atomicity intact.

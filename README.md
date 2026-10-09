@@ -74,7 +74,7 @@ git clone git@github.com:jetpks/repo-tender.git
 cd repo-tender
 mise install        # installs Ruby 4.0.5 per mise.toml
 bundle install
-bin/repo-tender --help
+exe/repo-tender --help
 ```
 
 Make sure `gh` is logged in (otherwise org listing drops to an anonymous
@@ -255,11 +255,29 @@ The bits worth knowing the *why* of:
   org expansions). Splitting them keeps machine rewrites away from the file you
   actually wrote.
 
+## The `src` shim & lineage 🧬
+
+repo-tender's story has a detour in it: the engine was absorbed into
+[space-architect] v8.0.0 under that gem's namespace and binary name (`src`,
+state under `~/.local/state/space-src`), and has now been restored standalone
+here as repo-tender 1.0.0 — same engine, own identity again.
+
+[space-architect]: https://github.com/jetpks/space-architect
+
+Two things happen for anyone arriving from the absorbed identity:
+
+- **`src` still works** — it's shipped as a deprecation shim. Every invocation
+  prints `src is deprecated; use repo-tender instead` on stderr, then forwards
+  argv, stdout, and exit codes to the primary binary unchanged.
+- **State migrates automatically** — on first run of any `repo-tender`
+  command, a one-shot data-preserving migration moves your `space-src` config
+  and state dirs to their `repo-tender` locations (a no-clobber move; existing
+  `repo-tender` dirs are never touched) and flags a stale launchd agent with
+  the `repo-tender daemon install` instruction.
+
 ## Documentation 📖
 
-- **[Full Reference](docs/reference.md)** 📘 — every command, flag, config key,
-  status value, file location, and exit code
-- **[Design (PRD)](docs/prd/repo-tender.md)** 🏗️ — the full design & decisions
+- **[Changelog](CHANGELOG.md)** 📜 — what's new (1.0.0: standalone again)
 - **[Builder context](AGENTS.md)** 🤝 — toolchain & conventions
 
 ## Development 🧪

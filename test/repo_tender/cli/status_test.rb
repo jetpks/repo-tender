@@ -6,7 +6,7 @@ class CLIStatusTest < Minitest::Test
   include TestHelpers
   include CLITestHelpers
 
-  RepoTenderCLI = RepoTender::CLI
+  PristineCLI = RepoTender::CLI
 
   # ---- G5: `status` renders a per-repo evergreen table ----
 
@@ -37,8 +37,8 @@ class CLIStatusTest < Minitest::Test
       )
       RepoTender::State::Store.write(paths.state_file, seeded)
 
-      out, _err = invoke_command(RepoTenderCLI::Status::Show)
-      assert_equal 0, RepoTenderCLI.last_outcome.exit_code
+      out, _err = invoke_command(PristineCLI::Status::Show)
+      assert_equal 0, PristineCLI.last_outcome.exit_code
 
       # G5 assertion: stdout contains each repo key and its status.
       assert_includes out.string, "github.com/ruby/ruby"
@@ -53,8 +53,8 @@ class CLIStatusTest < Minitest::Test
 
   def test_status_with_empty_state_prints_friendly_message
     with_cli_env do |_env, _home|
-      out, _err = invoke_command(RepoTenderCLI::Status::Show)
-      assert_equal 0, RepoTenderCLI.last_outcome.exit_code
+      out, _err = invoke_command(PristineCLI::Status::Show)
+      assert_equal 0, PristineCLI.last_outcome.exit_code
       assert_includes out.string, "no repos in state"
     end
   end
@@ -110,7 +110,7 @@ class CLIStatusTest < Minitest::Test
       seed_status_state(paths)
 
       tty_out = Class.new(StringIO) { def tty? = true }.new
-      cmd = RepoTenderCLI::Status::Show.new
+      cmd = PristineCLI::Status::Show.new
       cmd.instance_variable_set(:@out, tty_out)
       cmd.instance_variable_set(:@err, StringIO.new)
       cmd.call(plain: nil, json: nil, no_color: nil, quiet: nil)
@@ -125,12 +125,12 @@ class CLIStatusTest < Minitest::Test
       seed_status_state(paths)
 
       # :plain output (non-TTY StringIO)
-      out_plain, _err = invoke_command(RepoTenderCLI::Status::Show)
+      out_plain, _err = invoke_command(PristineCLI::Status::Show)
       plain_str = out_plain.string
 
       # :pretty output (TTY)
       tty_out = Class.new(StringIO) { def tty? = true }.new
-      cmd = RepoTenderCLI::Status::Show.new
+      cmd = PristineCLI::Status::Show.new
       cmd.instance_variable_set(:@out, tty_out)
       cmd.instance_variable_set(:@err, StringIO.new)
       cmd.call(plain: nil, json: nil, no_color: nil, quiet: nil)
@@ -149,7 +149,7 @@ class CLIStatusTest < Minitest::Test
       seed_status_state(paths)
 
       tty_out = Class.new(StringIO) { def tty? = true }.new
-      cmd = RepoTenderCLI::Status::Show.new
+      cmd = PristineCLI::Status::Show.new
       cmd.instance_variable_set(:@out, tty_out)
       cmd.instance_variable_set(:@err, StringIO.new)
       cmd.call(plain: nil, json: nil, no_color: true, quiet: nil)
