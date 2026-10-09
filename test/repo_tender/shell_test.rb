@@ -91,6 +91,7 @@ class ShellTest < Minitest::Test
 
     observed = {value: nil, restored: nil}
     original = Open3.method(:capture3)
+    Open3.singleton_class.send(:remove_method, :capture3)
     Open3.define_singleton_method(:capture3) do |*args, **opts, &blk|
       # Record the value at the moment Shell.run's call is in
       # flight — this is the exact line the production code
@@ -106,6 +107,7 @@ class ShellTest < Minitest::Test
       # After the call returns, the original value must be restored.
       observed[:restored] = Thread.report_on_exception
     ensure
+      Open3.singleton_class.send(:remove_method, :capture3)
       Open3.define_singleton_method(:capture3, original)
     end
 
@@ -129,6 +131,7 @@ class ShellTest < Minitest::Test
 
     observed = []
     original_capture3 = Open3.method(:capture3)
+    Open3.singleton_class.send(:remove_method, :capture3)
     Open3.define_singleton_method(:capture3) do |*args, **opts, &blk|
       observed << Thread.report_on_exception
       original_capture3.call(*args, **opts, &blk)
@@ -152,6 +155,7 @@ class ShellTest < Minitest::Test
       assert observed.all? { |v| v == false },
         "Thread.report_on_exception must be false during all in-flight Shell.run calls; saw #{observed.inspect}"
     ensure
+      Open3.singleton_class.send(:remove_method, :capture3)
       Open3.define_singleton_method(:capture3, original_capture3)
       Thread.report_on_exception = original
     end
@@ -162,6 +166,7 @@ class ShellTest < Minitest::Test
     pre = Thread.report_on_exception
     observed = {value: nil, restored: nil}
     original = Open3.method(:capture3)
+    Open3.singleton_class.send(:remove_method, :capture3)
     Open3.define_singleton_method(:capture3) do |*args, **opts, &blk|
       observed[:value] = Thread.report_on_exception
       raise "simulated Open3 failure"
@@ -174,6 +179,7 @@ class ShellTest < Minitest::Test
         assert_raises(RuntimeError) { Shell.run("true") }
       end
     ensure
+      Open3.singleton_class.send(:remove_method, :capture3)
       Open3.define_singleton_method(:capture3, original)
     end
 

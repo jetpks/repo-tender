@@ -2,7 +2,6 @@
 
 require "pastel"
 require "yaml"
-require "repo_tender/cli"
 require "repo_tender/ui/mode"
 require "repo_tender/cli/options"
 

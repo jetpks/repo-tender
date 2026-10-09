@@ -1,7 +1,7 @@
 # frozen_string_literal: true
 
 require "dry/cli"
-require "repo_tender"
+require "repo_tender/migration"
 
 module RepoTender
   # CLI surface — thin translation layer between argv and the
@@ -17,7 +17,7 @@ module RepoTender
   #
   # Exit-code seam: each command records an `Outcome(exit_code:,
   # message:)` (the thread-local stash) and writes the user-facing
-  # message to `out`/`err` via the injected IOs. The `bin/repo-tender`
+  # message to `out`/`err` via the injected IOs. The `exe/repo-tender`
   # entrypoint reads the recorded Outcome and calls Kernel.exit with
   # the code — see CLI.run below. Tests can inspect last_outcome
   # in-process (no subprocess needed for unit tests); a subprocess
@@ -62,7 +62,18 @@ module RepoTender
     TOP_LEVEL_HELP = [[], ["--help"], ["-h"], ["help"]].freeze
     VERSION_REQUEST = [["version"], ["--version"]].freeze
 
-    # Entrypoint. Called by bin/repo-tender. Intercepts the top-level
+    # True when argv is a single token that is not a registered top-level
+    # command or group, and not already handled by the help/version intercepts.
+    # Both CLI.run and dispatch_src delegate to this shared predicate so the
+    # routing logic is defined exactly once.
+    def self.bare_query?(argv)
+      return false if TOP_LEVEL_HELP.include?(argv)
+      return false if VERSION_REQUEST.include?(argv)
+      # paths:exempt - Registry.get([]).children is a dry-cli command-tree node, not a filesystem path
+      argv.length == 1 && !Registry.get([]).children.key?(argv[0])
+    end
+
+    # Entrypoint. Called by exe/repo-tender. Intercepts the top-level
     # help/version forms (stdout, exit 0), otherwise hands argv to
     # Dry::CLI for command dispatch and translates the last Outcome to
     # a process exit code. A `Interrupt` raised from inside command
@@ -76,6 +87,15 @@ module RepoTender
     def self.run(argv, stdout, stderr)
       return print_usage(stdout) if TOP_LEVEL_HELP.include?(argv)
       return print_version(stdout) if VERSION_REQUEST.include?(argv)
+
+      Migration.run(paths: make_paths, err: stderr)
+
+      if bare_query?(argv)
+        paths = make_paths
+        config = Config::Store.load(paths.config_file).success
+        exit_code = Nav.dispatch(argv[0], stdout, stderr, config.base_dir)
+        Kernel.exit(exit_code)
+      end
 
       begin
         Dry::CLI.new(Registry).call(arguments: argv, out: stdout, err: stderr)
@@ -135,3 +155,5 @@ require "repo_tender/cli/status"
 require "repo_tender/cli/config"
 require "repo_tender/cli/daemon"
 require "repo_tender/cli/clone"
+require "repo_tender/cli/shell"
+require "repo_tender/nav"

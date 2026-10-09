@@ -147,7 +147,8 @@ class StateLockTest < Minitest::Test
           Lock.acquire(state_file) { flunk "must not yield when flock raises" }
         end
       ensure
-        File.define_singleton_method(:open) { |*a, **k, &b| saved_open.call(*a, **k, &b) }
+        File.singleton_class.send(:remove_method, :open)
+        File.define_singleton_method(:open, saved_open)
       end
 
       assert closed, "fd must be closed when flock raises (no leak)"

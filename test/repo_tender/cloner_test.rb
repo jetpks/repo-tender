@@ -4,7 +4,19 @@ require "test_helper"
 require "repo_tender/cloner"
 
 class ClonerTest < Minitest::Test
+  cover RepoTender::Cloner
   include TestHelpers
+
+  def setup
+    @orig_dir = Dir.pwd
+    @cwd_tmp = Dir.mktmpdir("cloner-cwd-")
+    Dir.chdir(@cwd_tmp)
+  end
+
+  def teardown
+    Dir.chdir(@orig_dir)
+    FileUtils.remove_entry(@cwd_tmp)
+  end
 
   # ---- GB1: happy path COW copy ----
 

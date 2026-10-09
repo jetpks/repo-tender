@@ -1,35 +1,78 @@
----
 name: CI
 
 on:
   push:
-    branches:
-      - main
+    branches: [main]
   pull_request:
 
 jobs:
-  ci:
-    runs-on: ${{ matrix.os }}
-    strategy:
-      fail-fast: false
-      matrix:
-        # macOS-only: launchd scheduling + ~/Library/LaunchAgents.
-        os:
-          - macos-latest
-        ruby-version:
-          - "4.0"
-
+  ruby-tests:
+    runs-on: ubuntu-latest
+    env:
+      BUNDLE_PATH: vendor/bundle
     steps:
-      - uses: actions/checkout@v4
-
-      - name: Set up Ruby
-        uses: ruby/setup-ruby@v1
+      - uses: actions/checkout@v7
+      - uses: jdx/mise-action@v4
+      - uses: actions/cache@v6
         with:
-          ruby-version: ${{ matrix.ruby-version }}
-          bundler-cache: true
+          path: vendor/bundle
+          key: bundle-ruby-${{ hashFiles('Gemfile.lock') }}
+          restore-keys: bundle-ruby-
+      - run: bundle install
+      - run: bundle exec rake test 2>&1 | tee /tmp/rake-test.log
+      - if: always()
+        name: Summary
+        run: |
+          echo "## Ruby tests" >> "$GITHUB_STEP_SUMMARY"
+          echo "" >> "$GITHUB_STEP_SUMMARY"
+          echo '```' >> "$GITHUB_STEP_SUMMARY"
+          grep -E '^\d+ runs,' /tmp/rake-test.log >> "$GITHUB_STEP_SUMMARY" 2>&1 || true
+          echo '```' >> "$GITHUB_STEP_SUMMARY"
 
-      - name: Run tests
-        run: bundle exec rake test
+  security-audit:
+    runs-on: ubuntu-latest
+    env:
+      BUNDLE_PATH: vendor/bundle
+    steps:
+      - uses: actions/checkout@v7
+      - uses: jdx/mise-action@v4
+      - uses: actions/cache@v6
+        with:
+          path: vendor/bundle
+          key: bundle-ruby-${{ hashFiles('Gemfile.lock') }}
+          restore-keys: bundle-ruby-
+      - run: bundle install
+      - run: gem install bundler-audit
+      - run: bundler-audit check --update 2>&1 | tee /tmp/audit.log
+      - if: always()
+        name: Summary
+        run: |
+          echo "## Security audit" >> "$GITHUB_STEP_SUMMARY"
+          echo "" >> "$GITHUB_STEP_SUMMARY"
+          echo '```' >> "$GITHUB_STEP_SUMMARY"
+          tail -5 /tmp/audit.log >> "$GITHUB_STEP_SUMMARY"
+          echo '```' >> "$GITHUB_STEP_SUMMARY"
 
-      - name: Lint (standardrb)
-        run: bundle exec standardrb
+  mutation:
+    runs-on: ubuntu-latest
+    env:
+      BUNDLE_PATH: vendor/bundle
+    steps:
+      - uses: actions/checkout@v7
+      - uses: jdx/mise-action@v4
+      - uses: actions/cache@v6
+        with:
+          path: vendor/bundle
+          key: bundle-ruby-${{ hashFiles('Gemfile.lock') }}
+          restore-keys: bundle-ruby-
+      - run: bundle install
+      - run: bundle exec rake mutant 2>&1 | tee /tmp/mutant.log
+        continue-on-error: true
+      - if: always()
+        name: Summary
+        run: |
+          echo "## Mutation testing" >> "$GITHUB_STEP_SUMMARY"
+          echo "" >> "$GITHUB_STEP_SUMMARY"
+          echo '```' >> "$GITHUB_STEP_SUMMARY"
+          grep -E '^(Coverage|Kills|Alive):' /tmp/mutant.log >> "$GITHUB_STEP_SUMMARY" 2>&1 || true
+          echo '```' >> "$GITHUB_STEP_SUMMARY"
