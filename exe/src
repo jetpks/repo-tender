@@ -1,0 +1,23 @@
+#!/usr/bin/env ruby
+# frozen_string_literal: true
+
+# Deprecation shim for the `src` binary name (the engine lived briefly under
+# the absorbed identity). Warns on EVERY invocation, then forwards
+# argv/stdout/exit codes to the primary binary unchanged — including the
+# usage output, which renders $PROGRAM_NAME's basename (so the shim presents
+# the primary binary's name for byte-identical --help parity).
+
+warn "src is deprecated; use repo-tender instead"
+
+source_gemfile = File.expand_path("../Gemfile", __dir__)
+if File.exist?(source_gemfile)
+  ENV["BUNDLE_GEMFILE"] ||= source_gemfile
+  require "bundler/setup"
+  $LOAD_PATH.unshift(File.expand_path("../lib", __dir__))
+end
+
+$PROGRAM_NAME = File.join(File.expand_path(__dir__), "repo-tender")
+
+require "repo_tender"
+
+RepoTender::CLI.run(ARGV, $stdout, $stderr)

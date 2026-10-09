@@ -9,7 +9,7 @@ class CLISyncTest < Minitest::Test
   include TestHelpers
   include CLITestHelpers
 
-  RepoTenderCLI = RepoTender::CLI
+  PristineCLI = RepoTender::CLI
   Engine = RepoTender::Sync::Engine
   Config = RepoTender::Config::Config
   RepoRef = RepoTender::Config::RepoRef
@@ -35,20 +35,12 @@ class CLISyncTest < Minitest::Test
           2.times do |i|
             owner = i.zero? ? "foo" : "bar"
             name = "repo#{i}"
-            bare = File.join(bares_dir, "bare-#{i}.git")
-            clone = File.join(bares_dir, "clone-#{i}")
-            system("git", "init", "-b", "trunk", "--bare", bare,
-              exception: true, out: File::NULL)
-            system("git", "-c", "init.defaultBranch=trunk", "init", "-q", clone,
-              exception: true, out: File::NULL)
+            repo_dir = File.join(bares_dir, "repo-#{i}")
+            FileUtils.cp_r(TestHelpers.seeded_trunk_template, repo_dir)
+            bare = File.join(repo_dir, "bare.git")
+            clone = File.join(repo_dir, "clone")
             in_async do
-              Shell.run("git", "remote", "add", "origin", bare, chdir: clone)
-              Shell.run("git", "config", "user.email", "test@example.com", chdir: clone)
-              Shell.run("git", "config", "user.name", "Test", chdir: clone)
-              File.write(File.join(clone, "README.md"), "hello\n")
-              Shell.run("git", "add", ".", chdir: clone)
-              Shell.run("git", "commit", "-qm", "initial", chdir: clone)
-              Shell.run("git", "push", "-q", "-u", "origin", "trunk", chdir: clone)
+              Shell.run("git", "remote", "set-url", "origin", bare, chdir: clone)
             end
             ref = RepoRef.new(host: "github.com", owner: owner, name: name)
             repo_path = File.join(base_dir, ref.host, ref.owner, ref.name)
@@ -77,8 +69,8 @@ class CLISyncTest < Minitest::Test
       )
       RepoTender::Config::Store.write(paths.config_file, config)
 
-      out, _err = invoke_command(RepoTenderCLI::Sync::Run)
-      assert_equal 0, RepoTenderCLI.last_outcome.exit_code
+      out, _err = invoke_command(PristineCLI::Sync::Run)
+      assert_equal 0, PristineCLI.last_outcome.exit_code
       assert_includes out.string, "synced 2 repo(s)"
 
       # State has rows for both repos.
@@ -128,8 +120,8 @@ class CLISyncTest < Minitest::Test
       )
       RepoTender::State::Store.write(paths.state_file, seeded_state)
 
-      out, _err = invoke_command(RepoTenderCLI::Sync::Run, repo: "github.com/foo/repo0")
-      assert_equal 0, RepoTenderCLI.last_outcome.exit_code
+      out, _err = invoke_command(PristineCLI::Sync::Run, repo: "github.com/foo/repo0")
+      assert_equal 0, PristineCLI.last_outcome.exit_code
       assert_includes out.string, "scoping sync to: github.com/foo/repo0"
 
       new_state = RepoTender::State::Store.load(paths.state_file).success
@@ -152,6 +144,199 @@ class CLISyncTest < Minitest::Test
     end
   end
 
+  # Regression: the "synced N repo(s)" summary used to be derived from
+  # new_state.repos.size — the merged state file, which holds a row for
+  # every repo ever synced. A scoped run therefore reported the whole
+  # state (553 repo(s) on a real machine) instead of the one repo it
+  # touched, contradicting the "starting: 1 repo(s)" line above it.
+  #
+  # The state here is seeded with rows for THREE repos while only one is
+  # tracked and synced, so state size (3) and processed count (1) can't
+  # coincide — the assertion below fails loudly on a regression.
+  def test_sync_repo_summary_counts_processed_repos_not_state_rows
+    with_engine_home_2_repos do |_env, paths, base_dir, refs|
+      config = Config.new(
+        base_dir: base_dir,
+        refresh_interval: 3600,
+        concurrency: 2,
+        repos: refs,
+        orgs: []
+      )
+      RepoTender::Config::Store.write(paths.config_file, config)
+
+      old_time_string = "2000-01-01T00:00:00Z"
+      seeded_row = RepoTender::State::Store::Repo.new(
+        default_branch: "trunk", last_fetch_at: old_time_string,
+        last_synced_at: old_time_string, status: "clean", last_error: nil
+      )
+      # Three rows, one of them ("gone/repo") no longer tracked at all —
+      # build_new_state never prunes, so it stays in state and would be
+      # counted by the old expression.
+      RepoTender::State::Store.write(paths.state_file, RepoTender::State::Store::State.new(
+        repos: {
+          "github.com/foo/repo0" => seeded_row,
+          "github.com/bar/repo1" => seeded_row,
+          "github.com/gone/repo" => seeded_row
+        },
+        orgs: {}
+      ))
+
+      out, _err = invoke_command(PristineCLI::Sync::Run, repo: "github.com/foo/repo0")
+      assert_equal 0, PristineCLI.last_outcome.exit_code
+
+      assert_includes out.string, "synced 1 repo(s)",
+        "scoped sync must report the 1 repo it processed, not the state file's row count"
+      refute_includes out.string, "synced 3 repo(s)",
+        "summary counted state rows instead of processed repos"
+
+      # The summary must agree with the run header printed moments earlier.
+      assert_includes out.string, "starting: 1 repo(s)"
+
+      # Guard the seeding itself: the untracked row must survive, or the
+      # test would pass for the wrong reason (state pruned down to 1).
+      new_state = RepoTender::State::Store.load(paths.state_file).success
+      refute_nil new_state.repos["github.com/gone/repo"],
+        "untracked state row vanished — test no longer distinguishes the two counts"
+    end
+  end
+
+  # The `--json` stream is documented as one JSON object per event line.
+  # The human-readable "synced N repo(s)" summary used to be appended to
+  # it unconditionally, leaving a trailing record no JSON consumer could
+  # parse. JsonReporter already emits a run_finished event carrying the
+  # summary, so the prose line is redundant there.
+  def test_sync_json_output_is_parseable_json_on_every_line
+    with_engine_home_2_repos do |_env, paths, base_dir, refs|
+      config = Config.new(
+        base_dir: base_dir,
+        refresh_interval: 3600,
+        concurrency: 2,
+        repos: refs,
+        orgs: []
+      )
+      RepoTender::Config::Store.write(paths.config_file, config)
+
+      out, _err = invoke_command(PristineCLI::Sync::Run, json: true)
+      assert_equal 0, PristineCLI.last_outcome.exit_code
+
+      events = assert_all_json_lines(out.string)
+      # The run_finished event is what carries the summary in JSON mode,
+      # so suppressing the prose line loses nothing.
+      assert_includes events, "run_finished"
+    end
+  end
+
+  # The scoped path prints its own prose notice ("scoping sync to: ...")
+  # before the reporter is even chosen, so it needs the same suppression.
+  # Easy to miss: an unscoped --json run never reaches that line.
+  def test_sync_scoped_json_output_is_parseable_json_on_every_line
+    with_engine_home_2_repos do |_env, paths, base_dir, refs|
+      config = Config.new(
+        base_dir: base_dir,
+        refresh_interval: 3600,
+        concurrency: 2,
+        repos: refs,
+        orgs: []
+      )
+      RepoTender::Config::Store.write(paths.config_file, config)
+
+      out, _err = invoke_command(PristineCLI::Sync::Run, repo: "github.com/foo/repo0", json: true)
+      assert_equal 0, PristineCLI.last_outcome.exit_code
+
+      refute_includes out.string, "scoping sync to:",
+        "the scoping notice is prose and must not land in the JSON stream"
+      assert_all_json_lines(out.string)
+    end
+  end
+
+  # Asserts every non-empty line of `output` parses as one JSON object.
+  # Returns the "event" of each line, for further assertions.
+  def assert_all_json_lines(output)
+    lines = output.lines.map(&:chomp).reject(&:empty?)
+    refute_empty lines, "json sync produced no output"
+    lines.map do |line|
+      JSON.parse(line)["event"]
+    rescue JSON::ParserError
+      flunk "non-JSON line in --json output: #{line.inspect}"
+    end
+  end
+
+  # A full sweep sees the complete tracked set, so rows for repos dropped
+  # from config stop accumulating.
+  def test_sync_unscoped_prunes_state_rows_for_untracked_repos
+    with_engine_home_2_repos do |_env, paths, base_dir, refs|
+      config = Config.new(
+        base_dir: base_dir,
+        refresh_interval: 3600,
+        concurrency: 2,
+        repos: refs,
+        orgs: []
+      )
+      RepoTender::Config::Store.write(paths.config_file, config)
+
+      RepoTender::State::Store.write(paths.state_file, RepoTender::State::Store::State.new(
+        repos: {
+          "github.com/gone/repo" => RepoTender::State::Store::Repo.new(
+            default_branch: "trunk", last_fetch_at: nil,
+            last_synced_at: "2000-01-01T00:00:00Z", status: "clean", last_error: nil
+          )
+        },
+        orgs: {}
+      ))
+
+      out, _err = invoke_command(PristineCLI::Sync::Run)
+      assert_equal 0, PristineCLI.last_outcome.exit_code
+      assert_includes out.string, "synced 2 repo(s)"
+
+      new_state = RepoTender::State::Store.load(paths.state_file).success
+      assert_nil new_state.repos["github.com/gone/repo"],
+        "untracked repo's state row survived a full sweep — rows accumulate forever"
+      # The tracked repos are of course still there.
+      refute_nil new_state.repos["github.com/foo/repo0"]
+      refute_nil new_state.repos["github.com/bar/repo1"]
+    end
+  end
+
+  # The catastrophic case. `sync --repo` narrows the config to one repo
+  # before handing it to the engine, so pruning on a scoped run would
+  # delete the state rows for every other tracked repo — 552 of them on
+  # a real machine. The CLI must pass prune: false whenever --repo is set.
+  def test_sync_scoped_does_not_prune_other_repos_state_rows
+    with_engine_home_2_repos do |_env, paths, base_dir, refs|
+      config = Config.new(
+        base_dir: base_dir,
+        refresh_interval: 3600,
+        concurrency: 2,
+        repos: refs,
+        orgs: []
+      )
+      RepoTender::Config::Store.write(paths.config_file, config)
+
+      seeded_row = RepoTender::State::Store::Repo.new(
+        default_branch: "trunk", last_fetch_at: nil,
+        last_synced_at: "2000-01-01T00:00:00Z", status: "clean", last_error: nil
+      )
+      RepoTender::State::Store.write(paths.state_file, RepoTender::State::Store::State.new(
+        repos: {
+          "github.com/foo/repo0" => seeded_row,
+          "github.com/bar/repo1" => seeded_row,
+          "github.com/gone/repo" => seeded_row
+        },
+        orgs: {}
+      ))
+
+      _out, _err = invoke_command(PristineCLI::Sync::Run, repo: "github.com/foo/repo0")
+      assert_equal 0, PristineCLI.last_outcome.exit_code
+
+      new_state = RepoTender::State::Store.load(paths.state_file).success
+      refute_nil new_state.repos["github.com/bar/repo1"],
+        "scoped sync pruned a tracked repo it did not process"
+      refute_nil new_state.repos["github.com/gone/repo"],
+        "scoped sync pruned an untracked row — pruning must never run on a scoped sweep"
+      refute_nil new_state.repos["github.com/foo/repo0"]
+    end
+  end
+
   def test_sync_repo_unknown_ref_exits_nonzero_with_stderr
     with_engine_home_2_repos do |_env, paths, base_dir, refs|
       config = Config.new(
@@ -163,8 +348,8 @@ class CLISyncTest < Minitest::Test
       )
       RepoTender::Config::Store.write(paths.config_file, config)
 
-      _out, err = invoke_command(RepoTenderCLI::Sync::Run, repo: "github.com/no/such")
-      assert_equal 1, RepoTenderCLI.last_outcome.exit_code
+      _out, err = invoke_command(PristineCLI::Sync::Run, repo: "github.com/no/such")
+      assert_equal 1, PristineCLI.last_outcome.exit_code
       assert_includes err.string, "no such tracked repo"
     end
   end
@@ -180,8 +365,8 @@ class CLISyncTest < Minitest::Test
       )
       RepoTender::Config::Store.write(paths.config_file, config)
 
-      _out, err = invoke_command(RepoTenderCLI::Sync::Run, repo: "not-a-ref")
-      assert_equal 1, RepoTenderCLI.last_outcome.exit_code
+      _out, err = invoke_command(PristineCLI::Sync::Run, repo: "not-a-ref")
+      assert_equal 1, PristineCLI.last_outcome.exit_code
       assert_includes err.string, "invalid repo reference"
     end
   end
@@ -218,37 +403,41 @@ class CLISyncTest < Minitest::Test
   #      escapes** for any input.
 
   def log_max_bytes(value)
-    cmd = RepoTenderCLI::Sync::Run.new
-    cmd.send(:log_max_bytes, value)
+    cmd = PristineCLI::Sync::Run.new
+    # Invalid values emit a real `Kernel#warn` (CF6) — capture_io keeps
+    # that off the suite's combined stdout/stderr.
+    result = nil
+    capture_io { result = cmd.send(:log_max_bytes, value) }
+    result
   end
 
   def test_log_max_bytes_unset_returns_default
-    assert_equal RepoTenderCLI::Sync::Run::DEFAULT_LOG_MAX_BYTES, log_max_bytes(nil)
+    assert_equal PristineCLI::Sync::Run::DEFAULT_LOG_MAX_BYTES, log_max_bytes(nil)
   end
 
   def test_log_max_bytes_empty_returns_default
-    assert_equal RepoTenderCLI::Sync::Run::DEFAULT_LOG_MAX_BYTES, log_max_bytes("")
+    assert_equal PristineCLI::Sync::Run::DEFAULT_LOG_MAX_BYTES, log_max_bytes("")
   end
 
   def test_log_max_bytes_whitespace_returns_default
-    assert_equal RepoTenderCLI::Sync::Run::DEFAULT_LOG_MAX_BYTES, log_max_bytes("   ")
+    assert_equal PristineCLI::Sync::Run::DEFAULT_LOG_MAX_BYTES, log_max_bytes("   ")
   end
 
   def test_log_max_bytes_non_numeric_returns_default
     # The CF6 example value — must NOT raise ArgumentError.
-    assert_equal RepoTenderCLI::Sync::Run::DEFAULT_LOG_MAX_BYTES, log_max_bytes("10MB")
-    assert_equal RepoTenderCLI::Sync::Run::DEFAULT_LOG_MAX_BYTES, log_max_bytes("abc")
-    assert_equal RepoTenderCLI::Sync::Run::DEFAULT_LOG_MAX_BYTES, log_max_bytes("1.5")
-    assert_equal RepoTenderCLI::Sync::Run::DEFAULT_LOG_MAX_BYTES, log_max_bytes("10MiB")
+    assert_equal PristineCLI::Sync::Run::DEFAULT_LOG_MAX_BYTES, log_max_bytes("10MB")
+    assert_equal PristineCLI::Sync::Run::DEFAULT_LOG_MAX_BYTES, log_max_bytes("abc")
+    assert_equal PristineCLI::Sync::Run::DEFAULT_LOG_MAX_BYTES, log_max_bytes("1.5")
+    assert_equal PristineCLI::Sync::Run::DEFAULT_LOG_MAX_BYTES, log_max_bytes("10MiB")
   end
 
   def test_log_max_bytes_zero_returns_default
-    assert_equal RepoTenderCLI::Sync::Run::DEFAULT_LOG_MAX_BYTES, log_max_bytes("0")
+    assert_equal PristineCLI::Sync::Run::DEFAULT_LOG_MAX_BYTES, log_max_bytes("0")
   end
 
   def test_log_max_bytes_negative_returns_default
-    assert_equal RepoTenderCLI::Sync::Run::DEFAULT_LOG_MAX_BYTES, log_max_bytes("-5")
-    assert_equal RepoTenderCLI::Sync::Run::DEFAULT_LOG_MAX_BYTES, log_max_bytes("-1048576")
+    assert_equal PristineCLI::Sync::Run::DEFAULT_LOG_MAX_BYTES, log_max_bytes("-5")
+    assert_equal PristineCLI::Sync::Run::DEFAULT_LOG_MAX_BYTES, log_max_bytes("-1048576")
   end
 
   def test_log_max_bytes_valid_positive_returns_value
@@ -289,14 +478,17 @@ class CLISyncTest < Minitest::Test
       RepoTender::Config::Store.write(paths.config_file, config)
 
       prev = ENV["REPO_TENDER_LOG_MAX_BYTES"]
+      out = nil
       begin
         ENV["REPO_TENDER_LOG_MAX_BYTES"] = "10MB"
-        out, _err = invoke_command(RepoTenderCLI::Sync::Run)
+        # The malformed value triggers a real `Kernel#warn` (CF6) —
+        # capture_io keeps that off the suite's combined stdout/stderr.
+        capture_io { out, _err = invoke_command(PristineCLI::Sync::Run) }
       ensure
         ENV["REPO_TENDER_LOG_MAX_BYTES"] = prev
       end
-      assert_equal 0, RepoTenderCLI.last_outcome.exit_code,
-        "expected exit 0 with malformed log_max_bytes; got #{RepoTenderCLI.last_outcome.exit_code}"
+      assert_equal 0, PristineCLI.last_outcome.exit_code,
+        "expected exit 0 with malformed log_max_bytes; got #{PristineCLI.last_outcome.exit_code}"
       assert_includes out.string, "synced 2 repo(s)"
 
       state = RepoTender::State::Store.load(paths.state_file).success

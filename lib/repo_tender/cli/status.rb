@@ -1,7 +1,6 @@
 # frozen_string_literal: true
 
 require "pastel"
-require "repo_tender/cli"
 require "repo_tender/ui/mode"
 require "repo_tender/cli/options"
 

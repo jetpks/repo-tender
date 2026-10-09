@@ -14,7 +14,7 @@ class CLINestedRegistrationTest < Minitest::Test
   include TestHelpers
   include CLITestHelpers
 
-  RepoTenderCLI = RepoTender::CLI
+  PristineCLI = RepoTender::CLI
 
   # ---- G7 first: nested subcommand registration works ----
 

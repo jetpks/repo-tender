@@ -1,69 +1,52 @@
----
 name: Release
 
 on:
   push:
     tags:
       - "v*"
-  workflow_dispatch:
 
 jobs:
-  source-gem:
-    name: Build gem
+  release:
+    name: Build and publish gem
     runs-on: ubuntu-latest
+    permissions:
+      contents: write # create the GitHub release
+      id-token: write # OIDC token for RubyGems trusted publishing
     steps:
-      - uses: actions/checkout@v4
-
-      - name: Set up Ruby
-        uses: ruby/setup-ruby@v1
+      - uses: actions/checkout@v7
         with:
-          ruby-version: "4.0"
-          bundler-cache: true
+          persist-credentials: false
+      - uses: jdx/mise-action@v4
 
       - name: Build gem
-        run: bundle exec rake build
-
-      - uses: actions/upload-artifact@v4
-        with:
-          name: source-gem
-          path: pkg/*.gem
-
-  release:
-    name: Publish to RubyGems
-    needs:
-      - source-gem
-    runs-on: ubuntu-latest
-    # Skip publishing on workflow_dispatch; tag pushes are the canonical
-    # release trigger. Use `workflow_dispatch` to dry-run the build.
-    if: github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v')
-    permissions:
-      contents: write
-    steps:
-      - uses: actions/checkout@v4
-
-      - name: Set up Ruby
-        uses: ruby/setup-ruby@v1
-        with:
-          ruby-version: "4.0"
-          bundler-cache: true
-
-      - uses: actions/download-artifact@v4
-        with:
-          path: pkg
-          merge-multiple: true
-
-      - name: Push gems to RubyGems
-        env:
-          GEM_HOST_API_KEY: ${{ secrets.RUBYGEMS_API_KEY }}
         run: |
-          set -e
-          for gem in pkg/*.gem; do
-            echo "Pushing $gem"
-            gem push "$gem"
-          done
+          gem build repo-tender.gemspec
+          mkdir -p pkg/
+          mv *.gem pkg/
 
-      - name: Attach gems to GitHub release
-        uses: softprops/action-gh-release@v2
+      # Trusted publishing: no API token. Auth is a short-lived OIDC
+      # credential minted at run time, scoped to this repo + workflow.
+      # Requires a (pending) trusted publisher configured on rubygems.org.
+      - name: Configure RubyGems credentials
+        uses: rubygems/configure-rubygems-credentials@v2.1.0
+
+      - name: Publish to RubyGems
+        run: gem push pkg/repo-tender-*.gem
+
+      - name: Smoke-test the published gem
+        run: |
+          version="${GITHUB_REF_NAME#v}"
+          for attempt in 1 2 3 4 5; do
+            gem install repo-tender --version "$version" && break
+            echo "not indexed yet (attempt $attempt) — retrying in 15s"
+            sleep 15
+          done
+          repo-tender version
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v3
         with:
           files: pkg/*.gem
           generate_release_notes: true
+          # Prerelease tags (e.g. v1.1.0.rc1) must not be published as "latest".
+          prerelease: ${{ contains(github.ref_name, '.rc') || contains(github.ref_name, '.beta') || contains(github.ref_name, '.alpha') || contains(github.ref_name, '.pre') || contains(github.ref_name, '-') }}

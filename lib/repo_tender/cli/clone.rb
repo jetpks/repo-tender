@@ -2,7 +2,6 @@
 
 require "pastel"
 require "dry/monads"
-require "repo_tender/cli"
 require "repo_tender/cli/options"
 require "repo_tender/cloner"
 

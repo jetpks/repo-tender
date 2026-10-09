@@ -7,15 +7,15 @@ class CLICloneTest < Minitest::Test
   include TestHelpers
   include CLITestHelpers
 
-  RepoTenderCLI = RepoTender::CLI
+  PristineCLI = RepoTender::CLI
 
   # ---- GB4: CLI multi-repo, --into, partial failure, exit codes ----
 
   def test_clone_single_repo_succeeds
     with_clone_env do |env, base, into|
       seed_repo(base, "github.com", "owner", "myrepo", files: {"README.md" => "hi"})
-      out, _err = invoke_command(RepoTenderCLI::Clone, names: ["myrepo"], into: into)
-      assert_equal 0, RepoTenderCLI.last_outcome.exit_code
+      out, _err = invoke_command(PristineCLI::Clone, names: ["myrepo"], into: into)
+      assert_equal 0, PristineCLI.last_outcome.exit_code
       assert File.directory?(File.join(into, "myrepo")), "dest must exist"
       assert_includes out.string, "cloned:"
       assert_includes out.string, "myrepo"
@@ -26,8 +26,8 @@ class CLICloneTest < Minitest::Test
     with_clone_env do |env, base, into|
       seed_repo(base, "github.com", "owner", "alpha")
       seed_repo(base, "github.com", "owner", "beta")
-      _, err = invoke_command(RepoTenderCLI::Clone, names: ["alpha", "beta"], into: into)
-      assert_equal 0, RepoTenderCLI.last_outcome.exit_code, "err: #{err.string}"
+      _, err = invoke_command(PristineCLI::Clone, names: ["alpha", "beta"], into: into)
+      assert_equal 0, PristineCLI.last_outcome.exit_code, "err: #{err.string}"
       assert File.directory?(File.join(into, "alpha"))
       assert File.directory?(File.join(into, "beta"))
     end
@@ -36,8 +36,8 @@ class CLICloneTest < Minitest::Test
   def test_clone_partial_failure_bad_name_reports_err_and_exits_one
     with_clone_env do |env, base, into|
       seed_repo(base, "github.com", "owner", "goodrepo")
-      _, err = invoke_command(RepoTenderCLI::Clone, names: ["goodrepo", "nosuchrepo"], into: into)
-      assert_equal 1, RepoTenderCLI.last_outcome.exit_code
+      _, err = invoke_command(PristineCLI::Clone, names: ["goodrepo", "nosuchrepo"], into: into)
+      assert_equal 1, PristineCLI.last_outcome.exit_code
       assert File.directory?(File.join(into, "goodrepo")), "good repo must still be copied"
       assert_includes err.string, "not found"
     end
@@ -45,8 +45,8 @@ class CLICloneTest < Minitest::Test
 
   def test_clone_all_fail_exits_one
     with_clone_env do |env, base, into|
-      _out, err = invoke_command(RepoTenderCLI::Clone, names: ["nosuch"], into: into)
-      assert_equal 1, RepoTenderCLI.last_outcome.exit_code
+      _out, err = invoke_command(PristineCLI::Clone, names: ["nosuch"], into: into)
+      assert_equal 1, PristineCLI.last_outcome.exit_code
       assert_includes err.string, "not found"
     end
   end
@@ -56,8 +56,8 @@ class CLICloneTest < Minitest::Test
       seed_repo(base, "github.com", "owner", "myrepo")
       original_dir = Dir.pwd
       Dir.chdir(into) do
-        _, _err = invoke_command(RepoTenderCLI::Clone, names: ["myrepo"])
-        assert_equal 0, RepoTenderCLI.last_outcome.exit_code
+        _, _err = invoke_command(PristineCLI::Clone, names: ["myrepo"])
+        assert_equal 0, PristineCLI.last_outcome.exit_code
         assert File.directory?(File.join(into, "myrepo")),
           "default into=. should copy into current working directory"
       end
@@ -70,8 +70,8 @@ class CLICloneTest < Minitest::Test
     with_clone_env do |env, base, into|
       seed_repo(base, "github.com", "owner", "myrepo")
       FileUtils.mkdir_p(File.join(into, "myrepo"))
-      _out, err = invoke_command(RepoTenderCLI::Clone, names: ["myrepo"], into: into)
-      assert_equal 1, RepoTenderCLI.last_outcome.exit_code
+      _out, err = invoke_command(PristineCLI::Clone, names: ["myrepo"], into: into)
+      assert_equal 1, PristineCLI.last_outcome.exit_code
       assert_includes err.string, "already exists"
     end
   end

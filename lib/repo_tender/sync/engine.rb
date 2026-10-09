@@ -13,6 +13,7 @@ require "repo_tender/state/store"
 require "repo_tender/state/lock"
 require "repo_tender/paths"
 require "repo_tender/sync/repo_plan"
+require "repo_tender/sync/report"
 require "repo_tender/ui/reporter"
 
 module RepoTender
@@ -79,8 +80,18 @@ module RepoTender
       # Runs one sync pass.
       # @param config [Config::Config] the validated config struct
       # @param paths  [Paths]         the XDG paths object
-      # @return [Dry::Monads::Result<State::Store::State>]
-      def call(config:, paths:)
+      # @param prune  [Boolean] drop state rows for repos this run did
+      #   not see. Only the CALLER can know whether `config` is the
+      #   complete tracked set or a scoped subset — the engine cannot
+      #   tell "user tracks one repo" from "user passed --repo" — so
+      #   this is never inferred here. Defaults to false: never delete
+      #   unless explicitly told to. Even when true, pruning is skipped
+      #   if any org listing failed (see below).
+      # @return [Dry::Monads::Result<Report>] the merged state plus the
+      #   count of repos this run processed. The two are distinct: state
+      #   accumulates every repo ever synced, `processed` is this run's
+      #   work (see Sync::Report).
+      def call(config:, paths:, prune: false)
         Sync do |task|
           semaphore = Async::Semaphore.new(config.concurrency, parent: task)
           barrier = Async::Barrier.new
@@ -147,12 +158,24 @@ module RepoTender
               @reporter.run_finished(summary)
 
               # Phase 4: assemble new state, write once.
-              new_state = build_new_state(state, results, org_records)
+              #
+              # A failed org listing means `discovered` is missing that
+              # org's repos through no fault of the user's config, so
+              # pruning would delete every row for a whole org on a
+              # transient forge outage. Only prune when the run saw the
+              # complete picture.
+              listings_complete = org_records.each_value.none?(&:last_error)
+              new_state = build_new_state(
+                state, results, org_records, prune: prune && listings_complete
+              )
               write_result = State::Store.write(paths.state_file, new_state)
               if write_result.failure?
                 write_result
               else
-                Dry::Monads::Success(new_state)
+                # results.size, not new_state.repos.size — the latter is
+                # the accumulated state file and would report every repo
+                # ever synced (553 on a scoped one-repo run).
+                Dry::Monads::Success(Report.new(state: new_state, processed: results.size))
               end
             ensure
               @reporter.detach
@@ -161,7 +184,11 @@ module RepoTender
 
           if lock_result == State::Lock::NOT_ACQUIRED
             warn "repo-tender: skipped — another sync in progress"
-            Dry::Monads::Success(State::Store.load(paths.state_file).success)
+            # Nothing ran, so processed is 0 — the state is returned only
+            # so callers still get a usable snapshot.
+            Dry::Monads::Success(
+              Report.new(state: State::Store.load(paths.state_file).success, processed: 0)
+            )
           else
             lock_result
           end
@@ -445,8 +472,20 @@ module RepoTender
       # run's per-repo outcomes + the org records. Failures get a
       # status: error row so every processed repo has a state entry
       # (gate G8).
-      def build_new_state(prev, results, org_records)
-        repos = prev.repos.dup
+      #
+      # With prune: false (the default) rows for repos this run did not
+      # process are carried over untouched — that is what keeps a scoped
+      # `sync --repo` from deleting every other repo's state.
+      #
+      # With prune: true the carry-over is dropped, so the new state
+      # holds exactly the repos this run processed and rows for repos
+      # removed from config stop accumulating. Starting from an empty
+      # hash is equivalent to selecting the processed keys out of prev:
+      # every repo in the sweep contributes exactly one result tuple
+      # (process_one's rescue guarantees one even on an unhandled
+      # raise), so each gets a fresh row in the merge below.
+      def build_new_state(prev, results, org_records, prune: false)
+        repos = prune ? {} : prev.repos.dup
         results.each do |key, repo, error|
           repos[key] = (repo || State::Store::Repo.new(
             default_branch: nil,

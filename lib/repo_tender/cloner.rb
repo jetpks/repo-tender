@@ -37,6 +37,7 @@ module RepoTender
       parts = name.split("/")
       case parts.length
       when 1
+        # paths:exempt - layout intent (checkout resolution by depth); repo_tender is deliberately independent of space_core and must not require it
         candidates = Dir.glob(File.join(@base_dir, "*", "*", name))
         case candidates.length
         when 0 then Failure("#{name.inspect} not found under base_dir #{@base_dir}")
@@ -45,6 +46,7 @@ module RepoTender
         end
       when 2
         owner, repo_name = parts
+        # paths:exempt - layout intent (checkout resolution by depth); repo_tender is deliberately independent of space_core and must not require it
         candidates = Dir.glob(File.join(@base_dir, "*", owner, repo_name))
         case candidates.length
         when 0 then Failure("#{name.inspect} not found under base_dir #{@base_dir}")

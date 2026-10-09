@@ -1,7 +1,6 @@
 # frozen_string_literal: true
 
 require "dry/monads"
-require "repo_tender/cli"
 require "repo_tender/cli/repo"  # for Repo::Helpers.parse_ref
 require "repo_tender/cli/options"
 require "repo_tender/ui/mode"
@@ -44,6 +43,19 @@ module RepoTender
           # the next spawn. No-op when the log is missing or
           # under-threshold (sync tests in G4 stay green).
           rotate_plist_logs(paths)
+
+          # Resolved BEFORE the scoping block: the "scoping sync to:"
+          # notice below is prose, and must be suppressed in JSON mode
+          # for the same reason the summary line is. Resolution depends
+          # only on flags/env/out, so it is safe this early.
+          mode = UI::Mode.resolve(
+            flags: {plain: plain, json: json, no_color: no_color, quiet: quiet},
+            env: CLI.env,
+            out: out
+          )
+          # Every line of --json output must parse as one JSON object.
+          human = mode.format != :json
+
           if repo
             target = scope_target(repo)
             return fail_with(self, "invalid repo reference: #{repo.inspect} (expected host/owner/name)") if target.failure?
@@ -58,14 +70,9 @@ module RepoTender
             # exactly the G4 "other repo gets no state row" test
             # path, so we explicitly empty orgs here).
             config = Config::Store.with(config, repos: [found], orgs: [])
-            out.puts "scoping sync to: #{Repo::Helpers.format_ref(found)}"
+            out.puts "scoping sync to: #{Repo::Helpers.format_ref(found)}" if human
           end
 
-          mode = UI::Mode.resolve(
-            flags: {plain: plain, json: json, no_color: no_color, quiet: quiet},
-            env: CLI.env,
-            out: out
-          )
           reporter = if mode.format == :json
             UI::JsonReporter.new(out)
           elsif mode.animate
@@ -74,14 +81,19 @@ module RepoTender
             UI::PlainReporter.new(out, mode: mode)
           end
 
-          result = RepoTender::Sync::Engine.new(reporter: reporter).call(config: config, paths: paths)
+          # prune only on a full sweep. With --repo the config above was
+          # narrowed to one repo, so pruning would delete the state rows
+          # for every OTHER tracked repo.
+          result = RepoTender::Sync::Engine.new(reporter: reporter)
+            .call(config: config, paths: paths, prune: repo.nil?)
           if result.failure?
             return fail_with(self, "sync failed: #{format_failure(result.failure)}")
           end
 
-          new_state = result.success
-          n = new_state.repos.size
-          out.puts "synced #{n} repo(s)"
+          report = result.success
+          # JsonReporter already emits a run_finished event carrying the
+          # summary, so suppressing the prose line loses nothing.
+          out.puts "synced #{report.processed} repo(s)" if human
           CLI.record_outcome(Outcome.new(exit_code: 0))
         end
 
