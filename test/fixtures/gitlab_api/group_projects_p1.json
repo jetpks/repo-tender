@@ -1,0 +1,50 @@
+[
+  {
+    "id": 13083,
+    "name": "GitLab",
+    "path": "gitlab",
+    "path_with_namespace": "gitlab-org/gitlab",
+    "description": "GitLab's open DevOps platform",
+    "archived": false,
+    "visibility": "public",
+    "web_url": "https://gitlab.com/gitlab-org/gitlab",
+    "http_url_to_repo": "https://gitlab.com/gitlab-org/gitlab.git",
+    "last_activity_at": "2026-10-28T12:00:00Z"
+  },
+  {
+    "id": 250833,
+    "name": "GitLab Runner",
+    "path": "gitlab-runner",
+    "path_with_namespace": "gitlab-org/gitlab-runner",
+    "description": "The continuous integration runner for GitLab",
+    "archived": false,
+    "visibility": "public",
+    "web_url": "https://gitlab.com/gitlab-org/gitlab-runner",
+    "http_url_to_repo": "https://gitlab.com/gitlab-org/gitlab-runner.git",
+    "last_activity_at": "2026-10-27T22:10:00Z"
+  },
+  {
+    "id": 7210873,
+    "name": "Retired Tool",
+    "path": "retired-tool",
+    "path_with_namespace": "gitlab-org/retired-tool",
+    "description": "Superseded by retired-tool-ng; kept read-only",
+    "archived": true,
+    "visibility": "public",
+    "web_url": "https://gitlab.com/gitlab-org/retired-tool",
+    "http_url_to_repo": "https://gitlab.com/gitlab-org/retired-tool.git",
+    "last_activity_at": "2025-08-19T10:05:00Z"
+  },
+  {
+    "id": 6845111,
+    "name": "Deep Tool",
+    "path": "deep-tool",
+    "path_with_namespace": "gitlab-org/subgroup/deep-tool",
+    "description": "A project one subgroup down — exercises the subgroup-safe owner split",
+    "archived": false,
+    "visibility": "public",
+    "web_url": "https://gitlab.com/gitlab-org/subgroup/deep-tool",
+    "http_url_to_repo": "https://gitlab.com/gitlab-org/subgroup/deep-tool.git",
+    "last_activity_at": "2026-10-20T07:40:00Z"
+  }
+]

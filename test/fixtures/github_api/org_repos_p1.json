@@ -1,0 +1,41 @@
+[
+  {
+    "id": 212613049,
+    "node_id": "MDEwOlJlcG9zaXRvcnk=",
+    "name": "cli",
+    "full_name": "cli/cli",
+    "private": false,
+    "fork": false,
+    "archived": false,
+    "html_url": "https://github.com/cli/cli",
+    "description": "GitHub's official command line tool",
+    "default_branch": "trunk",
+    "updated_at": "2026-10-28T12:00:00Z"
+  },
+  {
+    "id": 243757230,
+    "node_id": "MDEwOlJlcG9zaXRvcnk=",
+    "name": "browser",
+    "full_name": "cli/browser",
+    "private": false,
+    "fork": false,
+    "archived": false,
+    "html_url": "https://github.com/cli/browser",
+    "description": "Library for launching a web browser from Go",
+    "default_branch": "main",
+    "updated_at": "2026-09-14T08:30:00Z"
+  },
+  {
+    "id": 222244583,
+    "node_id": "MDEwOlJlcG9zaXRvcnk=",
+    "name": "go-gh",
+    "full_name": "cli/go-gh",
+    "private": false,
+    "fork": false,
+    "archived": true,
+    "html_url": "https://github.com/cli/go-gh",
+    "description": "Go library for the GitHub CLI (superseded by cli/go-gh/v2)",
+    "default_branch": "trunk",
+    "updated_at": "2025-11-02T16:45:00Z"
+  }
+]
