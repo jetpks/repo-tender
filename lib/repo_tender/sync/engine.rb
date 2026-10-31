@@ -11,6 +11,7 @@ require "repo_tender/scm/git"
 require "repo_tender/forge/github"
 require "repo_tender/state/store"
 require "repo_tender/state/lock"
+require "repo_tender/state/yaml_file"
 require "repo_tender/paths"
 require "repo_tender/sync/repo_plan"
 require "repo_tender/sync/report"
@@ -69,17 +70,23 @@ module RepoTender
 
       def initialize(scm: SCM::Git.new, forge: Forge::GitHub.new,
         clock: -> { Time.now }, url_builder: DEFAULT_URL_BUILDER,
-        reporter: RepoTender::UI::NullReporter.new)
+        reporter: RepoTender::UI::NullReporter.new, state_backend: nil)
         @scm = scm
         @forge = forge
         @clock = clock
         @url_builder = url_builder
         @reporter = reporter
+        @state_backend = state_backend
       end
 
       # Runs one sync pass.
       # @param config [Config::Config] the validated config struct
-      # @param paths  [Paths]         the XDG paths object
+      # @param paths  [Paths, nil] the XDG paths object. Optional when a
+      #   state backend was injected at construction — the CLI keeps
+      #   passing it and gets the default YAML-file backend; a host app
+      #   passes `paths: nil` and drives its own store. Omitting both is
+      #   programmer error (ArgumentError): the engine has nowhere to
+      #   put state.
       # @param prune  [Boolean] drop state rows for repos this run did
       #   not see. Only the CALLER can know whether `config` is the
       #   complete tracked set or a scoped subset — the engine cannot
@@ -91,24 +98,27 @@ module RepoTender
       #   count of repos this run processed. The two are distinct: state
       #   accumulates every repo ever synced, `processed` is this run's
       #   work (see Sync::Report).
-      def call(config:, paths:, prune: false)
+      def call(config:, paths: nil, prune: false)
+        backend = @state_backend || (paths && State::YamlFile.new(state_file: paths.state_file))
+        raise ArgumentError, "call requires paths: or an injected state_backend: (nowhere to put state)" if backend.nil?
+
         Sync do |task|
           semaphore = Async::Semaphore.new(config.concurrency, parent: task)
           barrier = Async::Barrier.new
 
-          # Acquire an exclusive advisory lock on the sidecar lockfile
-          # BEFORE loading state. Held across the entire load→write span
+          # Serialize the run through the backend's exclusive lock
+          # BEFORE loading state. Held across the entire load→save span
           # so an overlapping run never writes and cannot clobber the
-          # in-flight run's data (CF10). Non-blocking: if another run
-          # holds the lock we bail cleanly rather than blocking forever
-          # (a blocked launchd tick would pile up on every subsequent
-          # StartInterval fire).
-          lock_result = State::Lock.acquire(paths.state_file) do
+          # in-flight run's data (CF10). The default backend's lock is
+          # non-blocking: if another run holds it we bail cleanly rather
+          # than blocking forever (a blocked launchd tick would pile up on
+          # every subsequent StartInterval fire).
+          lock_result = backend.with_exclusive_lock do
             # State is loaded once at the start (or initialized empty for
-            # a missing state.yaml). A new State object is built from
-            # the run's outcomes and written atomically at the end. Per-
-            # repo state rows that did not change are preserved.
-            state = State::Store.load(paths.state_file).success
+            # a missing store). A new State object is built from
+            # the run's outcomes and handed to backend.save at the end.
+            # Per-repo state rows that did not change are preserved.
+            state = backend.load.success
             now = @clock.call
 
             # Attach the reporter before expansion so the render fiber is
@@ -157,7 +167,7 @@ module RepoTender
               end
               @reporter.run_finished(summary)
 
-              # Phase 4: assemble new state, write once.
+              # Phase 4: assemble new state, hand it to the backend once.
               #
               # A failed org listing means `discovered` is missing that
               # org's repos through no fault of the user's config, so
@@ -168,7 +178,7 @@ module RepoTender
               new_state = build_new_state(
                 state, results, org_records, prune: prune && listings_complete
               )
-              write_result = State::Store.write(paths.state_file, new_state)
+              write_result = backend.save(new_state)
               if write_result.failure?
                 write_result
               else
@@ -187,7 +197,7 @@ module RepoTender
             # Nothing ran, so processed is 0 — the state is returned only
             # so callers still get a usable snapshot.
             Dry::Monads::Success(
-              Report.new(state: State::Store.load(paths.state_file).success, processed: 0)
+              Report.new(state: backend.load.success, processed: 0)
             )
           else
             lock_result

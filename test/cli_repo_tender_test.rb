@@ -25,7 +25,7 @@ class CLIRepoTenderTest < Minitest::Test
 
   def test_primary_version_prints_version_and_exits_0
     out, err, code = run_binary("repo-tender", "--version")
-    assert_equal "1.0.0", out.chomp
+    assert_equal "1.1.0", out.chomp
     assert_equal 0, code
     assert_empty err
   end
@@ -49,7 +49,7 @@ class CLIRepoTenderTest < Minitest::Test
   def test_shim_warns_on_version
     out, err, code = run_binary("src", "--version")
     assert_equal 0, code
-    assert_equal "1.0.0", out.chomp
+    assert_equal "1.1.0", out.chomp
     assert_includes err, DEPRECATION_WARNING
   end
 

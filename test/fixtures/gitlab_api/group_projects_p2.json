@@ -1,0 +1,33 @@
+[
+  {
+    "id": 5127001,
+    "name": "Mirrored Project",
+    "path": "mirrored-project",
+    "path_with_namespace": "gitlab-org/mirrored-project",
+    "description": "Fork of upstream/mirrored-project kept for testing",
+    "archived": false,
+    "visibility": "public",
+    "web_url": "https://gitlab.com/gitlab-org/mirrored-project",
+    "http_url_to_repo": "https://gitlab.com/gitlab-org/mirrored-project.git",
+    "forked_from_project": {
+      "id": 5126000,
+      "path": "mirrored-project",
+      "name": "Mirrored Project",
+      "path_with_namespace": "upstream/mirrored-project",
+      "web_url": "https://gitlab.com/upstream/mirrored-project"
+    },
+    "last_activity_at": "2026-09-30T14:25:00Z"
+  },
+  {
+    "id": 3812035,
+    "name": "GitLab Docs",
+    "path": "gitlab-docs",
+    "path_with_namespace": "gitlab-org/gitlab-docs",
+    "description": "The documentation website for GitLab",
+    "archived": false,
+    "visibility": "public",
+    "web_url": "https://gitlab.com/gitlab-org/gitlab-docs",
+    "http_url_to_repo": "https://gitlab.com/gitlab-org/gitlab-docs.git",
+    "last_activity_at": "2026-10-28T09:55:00Z"
+  }
+]
