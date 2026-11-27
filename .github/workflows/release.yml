@@ -28,7 +28,7 @@ jobs:
       # credential minted at run time, scoped to this repo + workflow.
       # Requires a (pending) trusted publisher configured on rubygems.org.
       - name: Configure RubyGems credentials
-        uses: rubygems/configure-rubygems-credentials@v2.1.0
+        uses: rubygems/configure-rubygems-credentials@v2.2.0
 
       - name: Publish to RubyGems
         run: gem push pkg/repo-tender-*.gem
